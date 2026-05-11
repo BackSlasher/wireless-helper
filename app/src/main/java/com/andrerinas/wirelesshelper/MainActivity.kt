@@ -31,6 +31,10 @@ import androidx.core.os.LocaleListCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.progressindicator.CircularProgressIndicator
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 
@@ -49,6 +53,8 @@ class MainActivity : AppCompatActivity() {
     ) { _: Boolean -> }
 
     private lateinit var btnToggleService: Button
+    private lateinit var connectionProgress: CircularProgressIndicator
+    private lateinit var tvConnectionStatus: TextView
     private lateinit var layoutConnectionMode: View
     private lateinit var tvConnectionModeValue: TextView
     private lateinit var layoutStaticIp: View
@@ -166,7 +172,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun initializeViews() {
         btnToggleService = findViewById(R.id.btnToggleService)
+        connectionProgress = findViewById(R.id.connectionProgress)
+        tvConnectionStatus = findViewById(R.id.tvConnectionStatus)
         layoutConnectionMode = findViewById(R.id.layoutConnectionMode)
+
+        // Observe connection state and update progress ring + label
+        lifecycleScope.launch {
+            WirelessHelperService.connectionState.collectLatest { state ->
+                connectionProgress.setProgressCompat(state.progress, true)
+                tvConnectionStatus.text = if (state == ConnectionState.IDLE) "" else state.label
+            }
+        }
         tvConnectionModeValue = findViewById(R.id.tvConnectionModeValue)
         layoutStaticIp = findViewById(R.id.layoutStaticIp)
         tvStaticIpValue = findViewById(R.id.tvStaticIpValue)
