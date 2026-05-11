@@ -24,7 +24,7 @@ object HotspotAutoConnect {
     private const val CONNECTION_TIMEOUT_MS = 30_000L
 
     sealed class Result {
-        data class Connected(val network: Network) : Result()
+        data class Connected(val network: Network, val gateway: String?) : Result()
         data object UserDeclined : Result()
         data object NetworkNotFound : Result()
         data object Timeout : Result()
@@ -85,17 +85,24 @@ object HotspotAutoConnect {
                         currentNetwork = network
                         // Bind process to this network so sockets use it
                         cm.bindProcessToNetwork(network)
+
+                        // Log gateway info for debugging
+                        val gateway = getGatewayAddress(cm, network)
+                        Log.i(TAG, "=== HOTSPOT CONNECTED ===")
+                        Log.i(TAG, "Network: $network")
+                        Log.i(TAG, "Gateway (headunit): $gateway")
+                        Log.i(TAG, "=========================")
+
                         if (continuation.isActive) {
-                            continuation.resume(Result.Connected(network))
+                            continuation.resume(Result.Connected(network, gateway))
                         }
                     }
 
                     override fun onLost(network: Network) {
-                        Log.i(TAG, "Hotspot connection lost: $ssid")
-                        if (currentNetwork == network) {
-                            currentNetwork = null
-                            cm.bindProcessToNetwork(null)
-                        }
+                        // Android may report transient "lost" during handoff or signal fluctuation.
+                        // Unbinding here would route traffic to home WiFi, breaking AA.
+                        // Stay bound - if hotspot recovers, we're ready; if not, sockets fail visibly.
+                        Log.w(TAG, "Hotspot connection lost (staying bound): $ssid")
                     }
 
                     override fun onUnavailable() {
@@ -159,5 +166,19 @@ object HotspotAutoConnect {
         activeCallback = null
         connectivityManager = null
         currentNetwork = null
+    }
+
+    @RequiresApi(Build.VERSION_CODES.M)
+    private fun getGatewayAddress(cm: ConnectivityManager, network: Network): String? {
+        return try {
+            val linkProps = cm.getLinkProperties(network)
+            linkProps?.routes
+                ?.find { it.isDefaultRoute && it.gateway is java.net.Inet4Address }
+                ?.gateway
+                ?.hostAddress
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to get gateway: ${e.message}")
+            null
+        }
     }
 }
