@@ -27,6 +27,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class WirelessHelperService : Service(), BaseStrategy.StateListener {
 
@@ -45,6 +48,13 @@ class WirelessHelperService : Service(), BaseStrategy.StateListener {
             internal set
         var isConnected = false
             internal set
+
+        private val _connectionState = MutableStateFlow(ConnectionState.IDLE)
+        val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
+
+        fun updateConnectionState(state: ConnectionState) {
+            _connectionState.value = state
+        }
     }
 
     override fun onCreate() {
@@ -121,12 +131,14 @@ class WirelessHelperService : Service(), BaseStrategy.StateListener {
     }
 
     override fun onConnecting() {
+        updateConnectionState(ConnectionState.CONNECTING_HU)
         updateNotification(getString(R.string.notif_connecting))
         updateAllUIs()
     }
 
     override fun onProxyConnected() {
         isConnected = true
+        updateConnectionState(ConnectionState.AA_ACTIVE)
         acquireWakeLock()
         updateNotification(getString(R.string.notif_connected))
         updateAllUIs()
@@ -134,6 +146,7 @@ class WirelessHelperService : Service(), BaseStrategy.StateListener {
 
     override fun onProxyDisconnected() {
         isConnected = false
+        updateConnectionState(ConnectionState.IDLE)
         Log.i(TAG, "AA proxy connection lost.")
         updateAllUIs()
 
@@ -225,6 +238,7 @@ class WirelessHelperService : Service(), BaseStrategy.StateListener {
     override fun onDestroy() {
         isRunning = false
         isConnected = false
+        updateConnectionState(ConnectionState.IDLE)
         WifiNetworkBinding.stop(this)
         currentStrategy?.stop()
         if (currentStrategy is BaseStrategy) {
